@@ -25,14 +25,14 @@ jobs:
       - name: Accept Licenses
         run: yes | sdkmanager --licenses 2>/dev/null || true
 
-      - name: Install Gradle directly
+      - name: Install Gradle
         run: |
           wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt/
           sudo ln -sf /opt/gradle-8.4/bin/gradle /usr/local/bin/gradle
           gradle --version
 
-      - name: Create full Android project
+      - name: Create Android project
         run: |
           mkdir -p app/src/main/java/com/waqf/survey
           mkdir -p app/src/main/assets/www
@@ -70,6 +70,7 @@ jobs:
           cat > app/build.gradle << 'EOF'
           apply plugin: 'com.android.application'
           android {
+            namespace 'com.waqf.survey'
             compileSdkVersion 34
             defaultConfig {
               applicationId 'com.waqf.survey'
@@ -95,8 +96,7 @@ jobs:
 
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.waqf.survey">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.INTERNET"/>
             <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
             <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
@@ -260,7 +260,7 @@ jobs:
           chmod +x gradlew
           ls -la gradlew
 
-      - name: Build Debug APK
+      - name: Build APK
         run: |
           ./gradlew assembleDebug --no-daemon --stacktrace
           find . -name "*.apk"
@@ -281,8 +281,8 @@ jobs:
             ## تحميل التطبيق
             1. حمّل app-debug.apk
             2. ثبّته على جهاز أندرويد
-            3. اقبل تثبيت تطبيقات من مصادر خارجية
-            4. افتح التطبيق وامنح الإذونات ✅
+            3. اقبل تثبيت من مصادر خارجية
+            4. افتح وامنح الإذونات ✅
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
         env:
