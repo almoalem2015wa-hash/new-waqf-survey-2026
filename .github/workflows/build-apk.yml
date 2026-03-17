@@ -57,9 +57,7 @@ jobs:
             repositories { google(); mavenCentral() }
             dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
           }
-          allprojects {
-            repositories { google(); mavenCentral() }
-          }
+          allprojects { repositories { google(); mavenCentral() } }
           EOF
 
           cat > gradle.properties << 'EOF'
@@ -77,8 +75,8 @@ jobs:
               applicationId 'com.waqf.survey'
               minSdkVersion 21
               targetSdkVersion 34
-              versionCode 1
-              versionName '1.0'
+              versionCode 2
+              versionName '1.1'
             }
             buildTypes {
               debug { debuggable true; minifyEnabled false }
@@ -99,6 +97,7 @@ jobs:
             implementation 'androidx.appcompat:appcompat:1.7.0'
             implementation 'androidx.core:core:1.13.1'
             implementation 'androidx.webkit:webkit:1.11.0'
+            implementation 'androidx.activity:activity:1.9.0'
           }
           EOF
 
@@ -111,6 +110,7 @@ jobs:
             <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
             <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
             <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+            <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
             <uses-permission android:name="android.permission.CAMERA"/>
             <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
             <uses-feature android:name="android.hardware.camera" android:required="false"/>
@@ -149,16 +149,21 @@ jobs:
           cat > app/src/main/java/com/waqf/survey/MainActivity.java << 'EOF'
           package com.waqf.survey;
           import android.Manifest;
+          import android.app.Activity;
+          import android.content.Intent;
           import android.content.pm.PackageManager;
+          import android.net.Uri;
           import android.os.Build;
           import android.os.Bundle;
           import android.webkit.GeolocationPermissions;
+          import android.webkit.ValueCallback;
           import android.webkit.WebChromeClient;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
           import android.widget.Toast;
           import androidx.annotation.NonNull;
+          import androidx.annotation.Nullable;
           import androidx.appcompat.app.AlertDialog;
           import androidx.appcompat.app.AppCompatActivity;
           import androidx.core.app.ActivityCompat;
@@ -166,8 +171,10 @@ jobs:
           import java.util.ArrayList;
           import java.util.List;
           public class MainActivity extends AppCompatActivity {
-              private static final int PERM = 1001;
+              private static final int PERM_CODE    = 1001;
+              private static final int FILE_CHOOSER = 2001;
               private WebView wv;
+              private ValueCallback<Uri[]> fileCallback;
               @Override
               protected void onCreate(Bundle s) {
                   super.onCreate(s);
@@ -188,18 +195,61 @@ jobs:
                   ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                   ws.setCacheMode(WebSettings.LOAD_DEFAULT);
                   ws.setDatabaseEnabled(true);
+                  ws.setMediaPlaybackRequiresUserGesture(false);
                   wv.setWebViewClient(new WebViewClient() {
                       @Override public boolean shouldOverrideUrlLoading(WebView v, String url) {
                           v.loadUrl(url); return true;
                       }
                   });
                   wv.setWebChromeClient(new WebChromeClient() {
-                      @Override public void onGeolocationPermissionsShowPrompt(String o, GeolocationPermissions.Callback c) {
-                          c.invoke(o, true, false);
+                      @Override
+                      public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                          callback.invoke(origin, true, false);
+                      }
+                      @Override
+                      public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> cb, FileChooserParams params) {
+                          if (fileCallback != null) { fileCallback.onReceiveValue(null); }
+                          fileCallback = cb;
+                          Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                          intent.addCategory(Intent.CATEGORY_OPENABLE);
+                          intent.setType("*/*");
+                          intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                              "image/*","application/vnd.google-earth.kml+xml",
+                              "application/vnd.google-earth.kmz","application/geo+json",
+                              "application/json","image/tiff","*/*"
+                          });
+                          try {
+                              startActivityForResult(Intent.createChooser(intent, "اختر ملفاً"), FILE_CHOOSER);
+                          } catch (Exception e) {
+                              fileCallback = null;
+                              Toast.makeText(MainActivity.this, "تعذّر فتح مدير الملفات", Toast.LENGTH_SHORT).show();
+                              return false;
+                          }
+                          return true;
                       }
                   });
                   wv.loadUrl("file:///android_asset/www/index.html");
-                  if (!hasPerm()) showDialog();
+                  if (!hasPerm()) showPermDialog();
+              }
+              @Override
+              protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+                  super.onActivityResult(requestCode, resultCode, data);
+                  if (requestCode == FILE_CHOOSER) {
+                      if (fileCallback == null) return;
+                      Uri[] results = null;
+                      if (resultCode == Activity.RESULT_OK && data != null) {
+                          String dataStr = data.getDataString();
+                          if (dataStr != null) results = new Uri[]{ Uri.parse(dataStr) };
+                          else if (data.getClipData() != null) {
+                              int count = data.getClipData().getItemCount();
+                              results = new Uri[count];
+                              for (int i = 0; i < count; i++)
+                                  results[i] = data.getClipData().getItemAt(i).getUri();
+                          }
+                      }
+                      fileCallback.onReceiveValue(results);
+                      fileCallback = null;
+                  }
               }
               private boolean hasPerm() {
                   for (String p : getPerms())
@@ -216,11 +266,11 @@ jobs:
                          if (Build.VERSION.SDK_INT<=28) l.add(Manifest.permission.WRITE_EXTERNAL_STORAGE); }
                   return l.toArray(new String[0]);
               }
-              private void showDialog() {
+              private void showPermDialog() {
                   new AlertDialog.Builder(this)
                       .setTitle("نظام المسح الوقفي")
                       .setMessage("يحتاج التطبيق:\n\n📍 الموقع\n📁 الملفات\n📷 الكاميرا")
-                      .setPositiveButton("السماح", (d,w)->ActivityCompat.requestPermissions(this,getPerms(),PERM))
+                      .setPositiveButton("السماح", (d,w)->ActivityCompat.requestPermissions(this,getPerms(),PERM_CODE))
                       .setNegativeButton("تخطي",null).setCancelable(false).show();
               }
               @Override public void onRequestPermissionsResult(int c, @NonNull String[] p, @NonNull int[] r) {
@@ -235,7 +285,6 @@ jobs:
 
           echo '<?xml version="1.0" encoding="utf-8"?><resources><string name="app_name">المسح الوقفي</string></resources>' > app/src/main/res/values/strings.xml
           echo '<?xml version="1.0" encoding="utf-8"?><resources><color name="colorPrimary">#1e293b</color><color name="colorPrimaryDark">#0f172a</color><color name="colorAccent">#3b82f6</color></resources>' > app/src/main/res/values/colors.xml
-
           cat > app/src/main/res/values/styles.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
@@ -247,24 +296,18 @@ jobs:
             </style>
           </resources>
           EOF
-
-          echo '<?xml version="1.0" encoding="utf-8"?><paths><external-path name="e" path="."/><cache-path name="c" path="."/><files-path name="f" path="."/></paths>' > app/src/main/res/xml/file_paths.xml
+          echo '<?xml version="1.0" encoding="utf-8"?><paths><external-path name="e" path="."/><cache-path name="c" path="."/><files-path name="f" path="."/><root-path name="r" path=""/></paths>' > app/src/main/res/xml/file_paths.xml
           echo '<?xml version="1.0" encoding="utf-8"?><shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="#0f172a"/></shape>' > app/src/main/res/drawable/ic_launcher_background.xml
-
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-            android:width="108dp" android:height="108dp"
-            android:viewportWidth="108" android:viewportHeight="108">
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
             <path android:fillColor="#3b82f6" android:pathData="M54,20 L70,45 L90,45 L76,60 L82,85 L54,70 L26,85 L32,60 L18,45 L38,45 Z"/>
           </vector>
           EOF
-
           ICON='<?xml version="1.0" encoding="utf-8"?><vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48"><rect width="48" height="48" android:fillColor="#0f172a"/><path android:fillColor="#3b82f6" android:pathData="M24,8 L31,20 L40,20 L34,27 L37,38 L24,31 L11,38 L14,27 L8,20 L17,20 Z"/></vector>'
           for d in mipmap-hdpi mipmap-mdpi mipmap-xhdpi mipmap-xxhdpi; do
             echo "$ICON" > app/src/main/res/${d}/ic_launcher.xml
           done
-
           cat > app/src/main/res/mipmap-v26/ic_launcher.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
@@ -277,7 +320,6 @@ jobs:
         run: |
           gradle wrapper --gradle-version=8.4 --distribution-type=bin
           chmod +x gradlew
-          ls -la gradlew
 
       - name: Build APK
         run: |
@@ -287,21 +329,20 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: waqf-survey-apk
+          name: waqf-survey-apk-v2
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v1.${{ github.run_number }}"
-          name: "🕌 نظام المسح الوقفي v1.${{ github.run_number }}"
+          tag_name: "v2.${{ github.run_number }}"
+          name: "🕌 المسح الوقفي v2 — استيراد الملفات يعمل"
           body: |
-            ## تحميل التطبيق
-            1. حمّل app-debug.apk
-            2. ثبّته على جهاز أندرويد
-            3. اقبل تثبيت من مصادر خارجية
-            4. افتح وامنح الإذونات ✅
+            ## ✅ الإصلاحات
+            - فتح ملفات KML، GeoJSON، TIFF، صور من الجهاز
+            - زر استيراد يعمل بشكل كامل
+            - الإسقاط الجغرافي يقبل رفع الصور
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
         env:
