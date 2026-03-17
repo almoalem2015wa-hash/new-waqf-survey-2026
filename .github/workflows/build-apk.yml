@@ -43,6 +43,7 @@ jobs:
           mkdir -p app/src/main/res/mipmap-mdpi
           mkdir -p app/src/main/res/mipmap-xhdpi
           mkdir -p app/src/main/res/mipmap-xxhdpi
+          mkdir -p app/src/main/res/mipmap-v26
 
           cp waqf_survey_v10.html app/src/main/assets/www/index.html
 
@@ -85,6 +86,13 @@ jobs:
             compileOptions {
               sourceCompatibility JavaVersion.VERSION_17
               targetCompatibility JavaVersion.VERSION_17
+            }
+          }
+          configurations.all {
+            resolutionStrategy {
+              force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+              force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+              force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
             }
           }
           dependencies {
@@ -245,14 +253,25 @@ jobs:
 
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="108dp" android:height="108dp"
+            android:viewportWidth="108" android:viewportHeight="108">
             <path android:fillColor="#3b82f6" android:pathData="M54,20 L70,45 L90,45 L76,60 L82,85 L54,70 L26,85 L32,60 L18,45 L38,45 Z"/>
           </vector>
           EOF
 
+          ICON='<?xml version="1.0" encoding="utf-8"?><vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48"><rect width="48" height="48" android:fillColor="#0f172a"/><path android:fillColor="#3b82f6" android:pathData="M24,8 L31,20 L40,20 L34,27 L37,38 L24,31 L11,38 L14,27 L8,20 L17,20 Z"/></vector>'
           for d in mipmap-hdpi mipmap-mdpi mipmap-xhdpi mipmap-xxhdpi; do
-            echo '<?xml version="1.0" encoding="utf-8"?><adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>' > app/src/main/res/${d}/ic_launcher.xml
+            echo "$ICON" > app/src/main/res/${d}/ic_launcher.xml
           done
+
+          cat > app/src/main/res/mipmap-v26/ic_launcher.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+            <background android:drawable="@drawable/ic_launcher_background"/>
+            <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+          </adaptive-icon>
+          EOF
 
       - name: Generate Gradle wrapper
         run: |
